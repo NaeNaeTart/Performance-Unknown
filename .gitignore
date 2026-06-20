@@ -1,0 +1,25 @@
+# Build and output directories
+bin/
+obj/
+_ReSharper*/
+[Dd]ebug/
+[Rr]elease/
+
+# User-specific or local configurations
+*.user
+*.userosscache
+*.sln.docstates
+*.suo
+
+# Visual Studio files
+.vs/
+*.suo
+*.user
+*.sln.docstates
+
+# Rider / IntelliJ files
+.idea/
+
+# BepInEx temporary or cached files
+*.pdb
+*.log
