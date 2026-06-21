@@ -70,7 +70,8 @@ namespace UnknownPerformance
                 },
                 valueGetter: () => Cfg.LosSpeed.Value,
                 cleanName: "LOS Refresh Interval",
-                cleanChoiceNames: new string[] { "Every Frame (Heavy)", "Every 2 Frames (Fast)", "Every 3 Frames (Ultra)", "Every 4 Frames (Extreme)" }
+                cleanChoiceNames: new string[] { "Every Frame (Heavy)", "Every 2 Frames (Fast)", "Every 3 Frames (Ultra)", "Every 4 Frames (Extreme)" },
+                description: "Controls how frequently Line Of Sight checks are performed for AI. Higher intervals significantly improve FPS in crowded areas, with minor visual delay."
             );
 
             // Register Particles & Splatters maximum cap (VIDEO category)
@@ -85,7 +86,8 @@ namespace UnknownPerformance
                 },
                 valueGetter: () => Cfg.MaxParticles.Value,
                 cleanName: "Splatter Particle Cap",
-                cleanChoiceNames: new string[] { "25 (Fastest)", "50 (Highly Optimized)", "100 (Balanced)", "200 (Heavy)", "Unlimited" }
+                cleanChoiceNames: new string[] { "25 (Fastest)", "50 (Highly Optimized)", "100 (Balanced)", "200 (Heavy)", "Unlimited" },
+                description: "Limits the maximum active splatter, blood, and spark particles on the screen. Lower limits prevent CPU and GPU bottlenecking during heavy combat."
             );
 
             // Register Physics iteration quality slider (VIDEO/Performance category)
@@ -100,7 +102,8 @@ namespace UnknownPerformance
                 },
                 valueGetter: () => Cfg.PhysicsQuality.Value,
                 cleanName: "Physics 2D Solver Quality",
-                cleanChoiceNames: new string[] { "Low (Fastest Physics)", "Medium (Optimized)", "High (Native Default)" }
+                cleanChoiceNames: new string[] { "Low (Fastest Physics)", "Medium (Optimized)", "High (Native Default)" },
+                description: "Adjusts the solver iteration accuracy for 2D physics. Lower iterations reduce CPU overhead from collision solving without affecting normal gameplay."
             );
 
             // Register GC garbage sweeps optimization (VIDEO/Performance category)
@@ -113,7 +116,8 @@ namespace UnknownPerformance
                     ConfigureIncrementalGC();
                 },
                 valueGetter: () => Cfg.GcOptimize.Value,
-                cleanName: "GC Memory Sweat Sweeper"
+                cleanName: "GC Memory Sweeper",
+                description: "Optimizes Unity Garbage Collection time slices to keep gameplay completely micro-stutter free, combined with automated memory sweeping."
             );
         }
 
