@@ -44,6 +44,14 @@
       <HintPath>..\..\..\..\CasualtiesUnknown_Data\Managed\UnityEngine.Physics2DModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="UnityEngine.TilemapModule">
+      <HintPath>..\..\..\..\CasualtiesUnknown_Data\Managed\UnityEngine.TilemapModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.GridModule">
+      <HintPath>..\..\..\..\CasualtiesUnknown_Data\Managed\UnityEngine.GridModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <!-- ─────────── Game assembly ─────────── -->

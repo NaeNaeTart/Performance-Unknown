@@ -7,6 +7,8 @@ An advanced, hardware-aligned performance and memory allocation optimization Bep
 ## 🚀 Key Features & Optimizations
 
 *   **📷 LOS Refresh Amortization**: Skips Line-of-Sight raycast loops in `LateUpdate` across multiple frames based on dynamic settings, yielding a **50% - 75% reduction in CPU overhead** with zero visual compromise.
+*   **🎮 Playground Visual Modes**: Converts game textures and sprites into ultra-optimized flat silhouette average-colored shapes, or pure solid colored flat blocks (1x1 downsampled sheets) to remove rendering complex details and create a beautiful stylized play environment.
+*   **🌿 Foliage & Decor Stripper**: Actively identifies and disables minor, resource-heavy visual details like grass, flora, moss, debris, and blood splatters for extreme rendering optimization and absolute minimalism.
 *   **🩸 Splatter Particle Ceiling**: Implements an active FIFO-pruning system on visual blood splatters, dust, debris, and explosions to prevent combat framerate drops and massive rendering bottlenecks.
 *   **⚙️ Physics 2D Solver Tuning**: Dynamically adjusts Box2D position and velocity solver iterations, **drastically speeding up crowded scenes** with multiple active NPCs, ragdolls, or items.
 *   **🧹 Stutter-Free Garbage Collection (GC)**: Allocates incremental GC timeslices to split heap sweeps across frames, and executes preemptive safe garbage sweeping when entering paused states or loading scenes to eliminate micro-stutters.
@@ -19,6 +21,8 @@ Through the power of `ScavSetLib`, all configurations are integrated directly in
 
 | Setting Name | Category | Choices / Defaults | Optimization Vector |
 | :--- | :--- | :--- | :--- |
+| **Playground Visual Style** | Video | `Off` / `Flat Silhouette` / `Flat Blocks` | Simplifies sprites into colored flat shapes or solid blocks. |
+| **Disable Foliage & Decor** | Video | `Enabled` / `Disabled` (Default) | Prunes secondary decorative grass, foliage, splatters, and debris. |
 | **LOS Refresh Interval** | Video | `Every Frame` / `Every 2 Frames` (Fast) / `Every 3 Frames` (Ultra) / `Every 4 Frames` | Amortizes line-of-sight raycasts to skip intensive trigonometry calculations. |
 | **Splatter Particle Cap** | Video | `25` / `50` / `100` (Balanced) / `200` / `Unlimited` | Active FIFO-limiting of splatters and visual particles. |
 | **Physics 2D Solver Quality**| Video | `Low` / `Medium` (Optimized) / `High` (Default) | Tunes velocity and position solver iterations. |

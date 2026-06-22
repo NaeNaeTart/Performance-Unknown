@@ -12,7 +12,7 @@ namespace UnknownPerformance
     {
         public const string GUID = "com.kanisuko.unknownperformance";
         public const string Name = "Unknown Performance";
-        public const string Version = "1.0.1";
+        public const string Version = "1.1.0";
     }
 
     [BepInPlugin(PluginInfo.GUID, PluginInfo.Name, PluginInfo.Version)]
@@ -49,7 +49,10 @@ namespace UnknownPerformance
             // 4. Hook into Scene Loads for clean garbage sweeps
             SceneManager.sceneLoaded += OnSceneLoaded;
 
-            // 5. Apply Harmony Patches for active performance tuning
+            // 5. Instantiate the dynamic playground simplifier MonoBehaviour
+            var _ = PlaygroundSimplifier.Instance;
+
+            // 6. Apply Harmony Patches for active performance tuning
             _harmony = new Harmony(PluginInfo.GUID);
             _harmony.PatchAll(Assembly.GetExecutingAssembly());
 
@@ -58,6 +61,40 @@ namespace UnknownPerformance
 
         private void RegisterPerformanceOptions()
         {
+            // Register Playground Sprites style dropdown
+            SettingsManager.RegisterDropdown(
+                name: "Perf_Playground_Sprites",
+                category: Setting.SettingCategory.Video,
+                choices: new string[] { "Off", "Flat Shapes", "Flat Blocks" },
+                defaultValue: Cfg.PlaygroundSprites.Value,
+                onApply: (val) => {
+                    Cfg.PlaygroundSprites.Value = val;
+                    Log.LogInfo($"Playground Sprites visual style changed: {val}");
+                    PlaygroundSimplifier.Instance.ResetSweepCaches();
+                    PlaygroundSimplifier.Instance.ApplyPlaygroundSimplification(val, Cfg.DisableFoliage.Value);
+                },
+                valueGetter: () => Cfg.PlaygroundSprites.Value,
+                cleanName: "Playground Visual Style",
+                cleanChoiceNames: new string[] { "Off (Native Detail)", "Flat Silhouette (Playground)", "Flat Blocks (Extremely Fast)" },
+                description: "Absurdly simplifies game sprites and world elements. Flat Silhouette keeps shapes but strips textures into solid average colors. Flat Blocks turns everything into literal colored rectangles."
+            );
+
+            // Register Disable Foliage & Decor toggle
+            SettingsManager.RegisterBool(
+                name: "Perf_Playground_Foliage",
+                category: Setting.SettingCategory.Video,
+                defaultValue: Cfg.DisableFoliage.Value,
+                onApply: (val) => {
+                    Cfg.DisableFoliage.Value = val;
+                    Log.LogInfo($"Disable Foliage & Decor setting changed: {val}");
+                    PlaygroundSimplifier.Instance.ResetSweepCaches();
+                    PlaygroundSimplifier.Instance.ApplyPlaygroundSimplification(Cfg.PlaygroundSprites.Value, val);
+                },
+                valueGetter: () => Cfg.DisableFoliage.Value,
+                cleanName: "Disable Foliage & Decor",
+                description: "Completely disables small decorative grass, vines, foliage, debris, and blood splatters. Gives the world a clean, minimalist playground style and improves CPU/GPU performance."
+            );
+
             // Register Line of Sight frame skipper setting (VIDEO category)
             SettingsManager.RegisterDropdown(
                 name: "Perf_LOS_Speed",
