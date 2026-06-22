@@ -42,9 +42,16 @@ namespace UnknownPerformance
         private static readonly Dictionary<Tile, Color> _originalTileColors = new Dictionary<Tile, Color>();
         private static readonly HashSet<SpriteRenderer> _disabledFoliageRenderers = new HashSet<SpriteRenderer>();
 
+        // Audio state restoration
+        private static readonly Dictionary<AudioReverbZone, bool> _originalReverbZones = new Dictionary<AudioReverbZone, bool>();
+        private static readonly Dictionary<Behaviour, bool> _originalDspFilters = new Dictionary<Behaviour, bool>();
+        private static readonly Dictionary<AudioSource, float> _originalAmbientVolumes = new Dictionary<AudioSource, float>();
+
         private static Material? _guiMaterial;
         private int _lastMode = 0;
         private bool _lastDisableFoliage = false;
+        private int _lastTheme = 0;
+        private bool _lastMinimalistAudio = false;
 
         private void Awake()
         {
@@ -72,6 +79,15 @@ namespace UnknownPerformance
             _originalSprites.Clear();
             _originalColors.Clear();
             _disabledFoliageRenderers.Clear();
+            _originalReverbZones.Clear();
+            _originalDspFilters.Clear();
+            _originalAmbientVolumes.Clear();
+
+            // Re-apply minimalist audio in the new scene if active
+            if (Plugin.Cfg.MinimalistAudio.Value)
+            {
+                ApplyMinimalistAudio(true);
+            }
         }
 
         public void ResetSweepCaches()
@@ -84,9 +100,11 @@ namespace UnknownPerformance
         {
             int mode = Plugin.Cfg.PlaygroundSprites.Value; // 0 = Off, 1 = Silhouette, 2 = Flat Block
             bool disableFoliage = Plugin.Cfg.DisableFoliage.Value;
+            int theme = Plugin.Cfg.PlaygroundTheme.Value;
+            bool minimalAudio = Plugin.Cfg.MinimalistAudio.Value;
 
             // Handle transition states (toggled settings mid-game)
-            if (mode != _lastMode || disableFoliage != _lastDisableFoliage)
+            if (mode != _lastMode || disableFoliage != _lastDisableFoliage || theme != _lastTheme || minimalAudio != _lastMinimalistAudio)
             {
                 if (mode == 0 && _lastMode > 0)
                 {
@@ -96,10 +114,21 @@ namespace UnknownPerformance
                 {
                     RestoreOriginalFoliage();
                 }
+                if (minimalAudio != _lastMinimalistAudio)
+                {
+                    ApplyMinimalistAudio(minimalAudio);
+                }
                 
                 _lastMode = mode;
                 _lastDisableFoliage = disableFoliage;
+                _lastTheme = theme;
+                _lastMinimalistAudio = minimalAudio;
                 ResetSweepCaches();
+
+                if (mode > 0 || disableFoliage)
+                {
+                    ApplyPlaygroundSimplification(mode, disableFoliage);
+                }
             }
 
             if (mode == 0 && !disableFoliage) return;
@@ -266,7 +295,9 @@ namespace UnknownPerformance
             if (simplified != null)
             {
                 renderer.sprite = simplified;
-                renderer.color = new Color(avgColor.r, avgColor.g, avgColor.b, renderer.color.a * avgColor.a);
+                int theme = Plugin.Cfg.PlaygroundTheme.Value;
+                Color themeColor = GetThemeColor(avgColor, theme);
+                renderer.color = new Color(themeColor.r, themeColor.g, themeColor.b, renderer.color.a * themeColor.a);
             }
         }
 
@@ -305,7 +336,9 @@ namespace UnknownPerformance
                     if (simplified != null)
                     {
                         tile.sprite = simplified;
-                        tile.color = new Color(avgColor.r, avgColor.g, avgColor.b, tile.color.a * avgColor.a);
+                        int theme = Plugin.Cfg.PlaygroundTheme.Value;
+                        Color themeColor = GetThemeColor(avgColor, theme);
+                        tile.color = new Color(themeColor.r, themeColor.g, themeColor.b, tile.color.a * themeColor.a);
                         refreshed = true;
                     }
                 }
@@ -537,6 +570,220 @@ namespace UnknownPerformance
                 }
             }
             _disabledFoliageRenderers.Clear();
+        }
+
+        public static Color GetThemeColor(Color avgColor, int theme)
+        {
+            if (theme == 0) return avgColor; // None (Dynamic Colors)
+
+            // Calculate luminance using standard formula
+            float luma = 0.2126f * avgColor.r + 0.7152f * avgColor.g + 0.0722f * avgColor.b;
+
+            switch (theme)
+            {
+                case 1: // Neon Vaporwave: map luma from dark purple to hot pink to bright cyan
+                    if (luma < 0.5f)
+                    {
+                        float t = luma / 0.5f;
+                        return Color.Lerp(new Color(0.18f, 0.02f, 0.35f), new Color(1.0f, 0.08f, 0.58f), t);
+                    }
+                    else
+                    {
+                        float t = (luma - 0.5f) / 0.5f;
+                        return Color.Lerp(new Color(1.0f, 0.08f, 0.58f), new Color(0.0f, 1.0f, 1.0f), t);
+                    }
+
+                case 2: // Retro GameBoy: 4 shades of olive green
+                    if (luma < 0.25f)
+                    {
+                        return new Color(15f / 255f, 56f / 255f, 15f / 255f);
+                    }
+                    else if (luma < 0.50f)
+                    {
+                        return new Color(48f / 255f, 98f / 255f, 48f / 255f);
+                    }
+                    else if (luma < 0.75f)
+                    {
+                        return new Color(139f / 255f, 172f / 255f, 15f / 255f);
+                    }
+                    else
+                    {
+                        return new Color(155f / 255f, 188f / 255f, 15f / 255f);
+                    }
+
+                case 3: // Cyberpunk Amber: map luma from deep charcoal/orange to bright neon amber yellow
+                    if (luma < 0.6f)
+                    {
+                        float t = luma / 0.6f;
+                        return Color.Lerp(new Color(0.06f, 0.03f, 0.01f), new Color(0.92f, 0.38f, 0.0f), t);
+                    }
+                    else
+                    {
+                        float t = (luma - 0.6f) / 0.4f;
+                        return Color.Lerp(new Color(0.92f, 0.38f, 0.0f), new Color(1.0f, 0.85f, 0.0f), t);
+                    }
+
+                case 4: // Monochrome Blueprint: map luma from deep blueprint blue to bright cyan/white lines
+                    return Color.Lerp(new Color(0.0f, 0.16f, 0.48f), new Color(0.65f, 0.94f, 1.0f), luma);
+
+                default:
+                    return avgColor;
+            }
+        }
+
+        public void ApplyMinimalistAudio(bool active)
+        {
+            try
+            {
+                if (active)
+                {
+                    // 1. Reverb Zones
+                    var reverbs = FindObjectsOfType<AudioReverbZone>();
+                    foreach (var reverb in reverbs)
+                    {
+                        if (reverb == null) continue;
+                        if (!_originalReverbZones.ContainsKey(reverb))
+                        {
+                            _originalReverbZones[reverb] = reverb.enabled;
+                        }
+                        reverb.enabled = false;
+                    }
+
+                    // 2. DSP Filters
+                    var filters = new List<Behaviour>();
+                    filters.AddRange(FindObjectsOfType<AudioLowPassFilter>());
+                    filters.AddRange(FindObjectsOfType<AudioHighPassFilter>());
+                    filters.AddRange(FindObjectsOfType<AudioEchoFilter>());
+                    filters.AddRange(FindObjectsOfType<AudioReverbFilter>());
+                    filters.AddRange(FindObjectsOfType<AudioDistortionFilter>());
+                    filters.AddRange(FindObjectsOfType<AudioChorusFilter>());
+
+                    foreach (var filter in filters)
+                    {
+                        if (filter == null) continue;
+                        if (!_originalDspFilters.ContainsKey(filter))
+                        {
+                            _originalDspFilters[filter] = filter.enabled;
+                        }
+                        filter.enabled = false;
+                    }
+
+                    // 3. Ambient Continuous Loops
+                    var sources = FindObjectsOfType<AudioSource>();
+                    int loopMutedCount = 0;
+                    foreach (var src in sources)
+                    {
+                        if (src == null || !src.loop) continue;
+
+                        string name = src.gameObject.name.ToLower();
+                        string clipName = src.clip != null ? src.clip.name.ToLower() : "";
+
+                        if (name.Contains("ambient") || name.Contains("wind") || name.Contains("hum") || 
+                            name.Contains("loop") || name.Contains("bgm") || name.Contains("music") || 
+                            name.Contains("drone") || name.Contains("buzz") || name.Contains("noise") || 
+                            name.Contains("vent") || name.Contains("generator") ||
+                            clipName.Contains("ambient") || clipName.Contains("wind") || clipName.Contains("hum") || 
+                            clipName.Contains("loop") || clipName.Contains("bgm") || clipName.Contains("music") || 
+                            clipName.Contains("drone") || clipName.Contains("buzz") || clipName.Contains("noise") || 
+                            clipName.Contains("vent") || clipName.Contains("generator"))
+                        {
+                            if (!_originalAmbientVolumes.ContainsKey(src))
+                            {
+                                _originalAmbientVolumes[src] = src.volume;
+                            }
+                            src.volume = 0f;
+                            loopMutedCount++;
+                        }
+                    }
+                    Plugin.Log.LogInfo("[PlaygroundSimplifier] Applied minimalist retro audio: disabled " + reverbs.Length + " reverb zones, " + filters.Count + " DSP filters, and muted " + loopMutedCount + " ambient loops.");
+                }
+                else
+                {
+                    RestoreOriginalAudio();
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError("[PlaygroundSimplifier] Error in ApplyMinimalistAudio: " + ex.Message);
+            }
+        }
+
+        public void RestoreOriginalAudio()
+        {
+            try
+            {
+                Plugin.Log.LogInfo("[PlaygroundSimplifier] Restoring all original acoustic environments, DSP filters, and ambient volumes...");
+
+                foreach (var kvp in _originalReverbZones)
+                {
+                    if (kvp.Key != null)
+                    {
+                        kvp.Key.enabled = kvp.Value;
+                    }
+                }
+                _originalReverbZones.Clear();
+
+                foreach (var kvp in _originalDspFilters)
+                {
+                    if (kvp.Key != null)
+                    {
+                        kvp.Key.enabled = kvp.Value;
+                    }
+                }
+                _originalDspFilters.Clear();
+
+                foreach (var kvp in _originalAmbientVolumes)
+                {
+                    if (kvp.Key != null)
+                    {
+                        kvp.Key.volume = kvp.Value;
+                    }
+                }
+                _originalAmbientVolumes.Clear();
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError("[PlaygroundSimplifier] Error in RestoreOriginalAudio: " + ex.Message);
+            }
+        }
+
+        public class DebrisFader : MonoBehaviour
+        {
+            private SpriteRenderer? _renderer;
+            private Vector3 _originalScale;
+            private Color _originalColor;
+            private float _elapsed = 0f;
+            private const float Duration = 0.5f;
+
+            private void Awake()
+            {
+                _renderer = GetComponent<SpriteRenderer>();
+                _originalScale = transform.localScale;
+                if (_renderer != null)
+                {
+                    _originalColor = _renderer.color;
+                }
+            }
+
+            private void Update()
+            {
+                _elapsed += Time.deltaTime;
+                float t = Mathf.Clamp01(_elapsed / Duration);
+
+                // Smooth scale down
+                transform.localScale = Vector3.Lerp(_originalScale, Vector3.zero, t);
+
+                // Smooth fade out
+                if (_renderer != null)
+                {
+                    _renderer.color = new Color(_originalColor.r, _originalColor.g, _originalColor.b, Mathf.Lerp(_originalColor.a, 0f, t));
+                }
+
+                if (t >= 1f)
+                {
+                    Destroy(gameObject);
+                }
+            }
         }
     }
 }

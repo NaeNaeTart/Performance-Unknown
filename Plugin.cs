@@ -12,7 +12,7 @@ namespace UnknownPerformance
     {
         public const string GUID = "com.kanisuko.unknownperformance";
         public const string Name = "Unknown Performance";
-        public const string Version = "1.1.0";
+        public const string Version = "1.2.0";
     }
 
     [BepInPlugin(PluginInfo.GUID, PluginInfo.Name, PluginInfo.Version)]
@@ -93,6 +93,53 @@ namespace UnknownPerformance
                 valueGetter: () => Cfg.DisableFoliage.Value,
                 cleanName: "Disable Foliage & Decor",
                 description: "Completely disables small decorative grass, vines, foliage, debris, and blood splatters. Gives the world a clean, minimalist playground style and improves CPU/GPU performance."
+            );
+
+            // Register Playground Theme dropdown
+            SettingsManager.RegisterDropdown(
+                name: "Perf_Playground_Theme",
+                category: Setting.SettingCategory.Video,
+                choices: new string[] { "None", "Vaporwave", "GameBoy", "Cyberpunk", "Blueprint" },
+                defaultValue: Cfg.PlaygroundTheme.Value,
+                onApply: (val) => {
+                    Cfg.PlaygroundTheme.Value = val;
+                    Log.LogInfo($"Playground Theme changed: {val}");
+                    PlaygroundSimplifier.Instance.ResetSweepCaches();
+                    PlaygroundSimplifier.Instance.ApplyPlaygroundSimplification(Cfg.PlaygroundSprites.Value, Cfg.DisableFoliage.Value);
+                },
+                valueGetter: () => Cfg.PlaygroundTheme.Value,
+                cleanName: "Playground Color Palette",
+                cleanChoiceNames: new string[] { "None (Dynamic Colors)", "Neon Vaporwave", "Retro GameBoy", "Cyberpunk Amber", "Monochrome Blueprint" },
+                description: "Applies a stylized retro color scheme over simplified playground elements."
+            );
+
+            // Register Instant Debris Vaporization toggle
+            SettingsManager.RegisterBool(
+                name: "Perf_Vaporize_Debris",
+                category: Setting.SettingCategory.Video,
+                defaultValue: Cfg.VaporizeDebris.Value,
+                onApply: (val) => {
+                    Cfg.VaporizeDebris.Value = val;
+                    Log.LogInfo($"Instant Debris Vaporization setting changed: {val}");
+                },
+                valueGetter: () => Cfg.VaporizeDebris.Value,
+                cleanName: "Instant Debris Vaporization",
+                description: "Vaporizes broken glass, vents, and crate debris into lightweight puffs instantly, completely eliminating physics solver simulation overhead."
+            );
+
+            // Register Minimalist Audio toggle
+            SettingsManager.RegisterBool(
+                name: "Perf_Minimal_Audio",
+                category: Setting.SettingCategory.Video,
+                defaultValue: Cfg.MinimalistAudio.Value,
+                onApply: (val) => {
+                    Cfg.MinimalistAudio.Value = val;
+                    Log.LogInfo($"Minimalist Audio setting changed: {val}");
+                    PlaygroundSimplifier.Instance.ApplyMinimalistAudio(val);
+                },
+                valueGetter: () => Cfg.MinimalistAudio.Value,
+                cleanName: "Minimalist Retro Audio",
+                description: "Disables CPU-heavy room-acoustic reverb zones, DSP filters (lowpass/echo), and mutes environmental humming loops, keeping direct SFX crisp."
             );
 
             // Register Line of Sight frame skipper setting (VIDEO category)

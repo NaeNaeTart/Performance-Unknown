@@ -89,9 +89,13 @@ namespace UnknownPerformance
         [HarmonyPostfix]
         public static void Create_Postfix1(string id, GameObject __result)
         {
-            if (__result != null && IsParticleResource(id))
+            if (__result != null)
             {
-                _trackedParticles.Add(__result);
+                if (IsParticleResource(id))
+                {
+                    _trackedParticles.Add(__result);
+                }
+                HandleDebrisVaporization(id, __result);
             }
         }
 
@@ -109,9 +113,56 @@ namespace UnknownPerformance
         [HarmonyPostfix]
         public static void Create_Postfix2(string id, GameObject __result)
         {
-            if (__result != null && IsParticleResource(id))
+            if (__result != null)
             {
-                _trackedParticles.Add(__result);
+                if (IsParticleResource(id))
+                {
+                    _trackedParticles.Add(__result);
+                }
+                HandleDebrisVaporization(id, __result);
+            }
+        }
+
+        private static void HandleDebrisVaporization(string id, GameObject obj)
+        {
+            if (obj == null) return;
+            if (!Plugin.Cfg.VaporizeDebris.Value) return;
+
+            string lowId = id.ToLower();
+            if (lowId.Contains("debris") || lowId.Contains("shard") || lowId.Contains("fragment") || 
+                lowId.Contains("particle") || lowId.Contains("shatter") || lowId.Contains("crate_") || 
+                lowId.Contains("glass") || lowId.Contains("wood") || lowId.Contains("metal"))
+            {
+                // Verify it doesn't have an Item component to preserve actual interactable game loot
+                bool hasItem = false;
+                Component[] comps = obj.GetComponents<Component>();
+                foreach (var comp in comps)
+                {
+                    if (comp == null) continue;
+                    string typeName = comp.GetType().Name;
+                    if (typeName == "Item")
+                    {
+                        hasItem = true;
+                        break;
+                    }
+                }
+
+                if (!hasItem)
+                {
+                    var rb = obj.GetComponent<Rigidbody2D>();
+                    if (rb != null)
+                    {
+                        rb.simulated = false;
+                    }
+
+                    var colliders = obj.GetComponents<Collider2D>();
+                    foreach (var col in colliders)
+                    {
+                        if (col != null) col.enabled = false;
+                    }
+
+                    obj.AddComponent<PlaygroundSimplifier.DebrisFader>();
+                }
             }
         }
 
