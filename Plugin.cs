@@ -3,6 +3,7 @@ using BepInEx.Logging;
 using HarmonyLib;
 using System;
 using System.Reflection;
+using UnityEngine;
 using UnityEngine.SceneManagement;
 using ScavSetLib;
 
@@ -12,7 +13,7 @@ namespace UnknownPerformance
     {
         public const string GUID = "com.kanisuko.unknownperformance";
         public const string Name = "Unknown Performance";
-        public const string Version = "1.0.1";
+        public const string Version = "1.3.0";
     }
 
     [BepInPlugin(PluginInfo.GUID, PluginInfo.Name, PluginInfo.Version)]
@@ -45,6 +46,11 @@ namespace UnknownPerformance
             // 3. Apply initial quality configurations
             ApplyPhysicsQuality(Cfg.PhysicsQuality.Value);
             ConfigureIncrementalGC();
+            ApplyTextureQuality(Cfg.TextureQuality.Value);
+            ApplyFpsLimit(Cfg.FpsLimit.Value);
+            ApplyVSync(Cfg.VSync.Value);
+            ApplyAntiAliasing(Cfg.AntiAliasing.Value);
+            ApplyShadowsAndReflections(Cfg.ShadowsEnabled.Value);
 
             // 4. Hook into Scene Loads for clean garbage sweeps
             SceneManager.sceneLoaded += OnSceneLoaded;
@@ -119,6 +125,82 @@ namespace UnknownPerformance
                 cleanName: "GC Memory Sweeper",
                 description: "Optimizes Unity Garbage Collection time slices to keep gameplay completely micro-stutter free, combined with automated memory sweeping."
             );
+
+            // Register iGPU Texture Downscaler
+            SettingsManager.RegisterDropdown(
+                name: "Perf_Texture_Quality",
+                category: Setting.SettingCategory.Video,
+                choices: new string[] { "Full", "Half", "Quarter", "One-Eighth" },
+                defaultValue: Cfg.TextureQuality.Value,
+                onApply: (val) => {
+                    Cfg.TextureQuality.Value = val;
+                    ApplyTextureQuality(val);
+                },
+                valueGetter: () => Cfg.TextureQuality.Value,
+                cleanName: "Texture Quality Downscaler",
+                cleanChoiceNames: new string[] { "Full Resolution", "Half Resolution (Fast)", "Quarter Resolution (Faster)", "One-Eighth Resolution (Extreme)" },
+                description: "Reduces texture resolution. Lowering this drastically reduces integrated GPU (iGPU) memory bandwidth requirements, yielding massive performance gains on laptop and handheld systems."
+            );
+
+            // Register FPS Limiter
+            SettingsManager.RegisterDropdown(
+                name: "Perf_FPS_Limit",
+                category: Setting.SettingCategory.Video,
+                choices: new string[] { "30 FPS", "45 FPS", "60 FPS", "Unlimited" },
+                defaultValue: Cfg.FpsLimit.Value,
+                onApply: (val) => {
+                    Cfg.FpsLimit.Value = val;
+                    ApplyFpsLimit(val);
+                },
+                valueGetter: () => Cfg.FpsLimit.Value,
+                cleanName: "Frame Rate Limit",
+                cleanChoiceNames: new string[] { "30 FPS", "45 FPS", "60 FPS", "Unlimited" },
+                description: "Caps the maximum frame rate. Setting a cap prevents your GPU and CPU from drawing unnecessary power, reducing heat and avoiding thermal throttling on mobile/laptop architectures."
+            );
+
+            // Register V-Sync Toggle
+            SettingsManager.RegisterBool(
+                name: "Perf_VSync_Toggle",
+                category: Setting.SettingCategory.Video,
+                defaultValue: Cfg.VSync.Value,
+                onApply: (val) => {
+                    Cfg.VSync.Value = val;
+                    ApplyVSync(val);
+                },
+                valueGetter: () => Cfg.VSync.Value,
+                cleanName: "Vertical Sync (V-Sync)",
+                description: "Synchronizes the game's frame rate with your monitor's refresh rate. Turn OFF to allow custom FPS limits, or ON to prevent screen tearing."
+            );
+
+            // Register Anti-Aliasing (MSAA)
+            SettingsManager.RegisterDropdown(
+                name: "Perf_Anti_Aliasing",
+                category: Setting.SettingCategory.Video,
+                choices: new string[] { "Disabled", "2x MSAA", "4x MSAA", "8x MSAA" },
+                defaultValue: Cfg.AntiAliasing.Value,
+                onApply: (val) => {
+                    Cfg.AntiAliasing.Value = val;
+                    ApplyAntiAliasing(val);
+                },
+                valueGetter: () => Cfg.AntiAliasing.Value,
+                cleanName: "Anti-Aliasing (MSAA)",
+                cleanChoiceNames: new string[] { "No Anti-Aliasing (Fastest)", "2x MSAA", "4x MSAA", "8x MSAA" },
+                description: "Controls Multi-Sample Anti-Aliasing to smooth jagged edges. Disabling MSAA removes an immense fill-rate bottleneck on low-spec integrated graphics chips."
+            );
+
+            // Register Shadows and Real-time reflections toggle
+            SettingsManager.RegisterBool(
+                name: "Perf_Shadows_Quality",
+                category: Setting.SettingCategory.Video,
+                defaultValue: Cfg.ShadowsEnabled.Value,
+                onApply: (val) => {
+                    Cfg.ShadowsEnabled.Value = val;
+                    ApplyShadowsAndReflections(val);
+                },
+                valueGetter: () => Cfg.ShadowsEnabled.Value,
+                cleanName: "Shadows & Real-time Reflections",
+                description: "Enables or disables standard shadows and real-time reflection probes. Disabling these removes costly lighting and pixel shader calculations, drastically scaling performance on low-end hardware."
+            );
         }
 
         public static void ApplyPhysicsQuality(int quality)
@@ -165,8 +247,92 @@ namespace UnknownPerformance
             }
         }
 
+        public static void ApplyTextureQuality(int val)
+        {
+            try
+            {
+                QualitySettings.globalTextureMipmapLimit = val;
+                Log.LogInfo($"Applied Texture Quality: globalTextureMipmapLimit={val}");
+            }
+            catch (Exception ex)
+            {
+                Log.LogError("Failed to apply Texture Quality: " + ex.Message);
+            }
+        }
+
+        public static void ApplyFpsLimit(int val)
+        {
+            try
+            {
+                int fps = -1;
+                if (val == 0) fps = 30;
+                else if (val == 1) fps = 45;
+                else if (val == 2) fps = 60;
+                else fps = -1;
+
+                Application.targetFrameRate = fps;
+                Log.LogInfo($"Applied FPS Limit: targetFrameRate={fps}");
+            }
+            catch (Exception ex)
+            {
+                Log.LogError("Failed to apply FPS Limit: " + ex.Message);
+            }
+        }
+
+        public static void ApplyVSync(bool active)
+        {
+            try
+            {
+                QualitySettings.vSyncCount = active ? 1 : 0;
+                Log.LogInfo($"Applied VSync: vSyncCount={QualitySettings.vSyncCount}");
+            }
+            catch (Exception ex)
+            {
+                Log.LogError("Failed to apply VSync: " + ex.Message);
+            }
+        }
+
+        public static void ApplyAntiAliasing(int val)
+        {
+            try
+            {
+                int msaa = 0;
+                if (val == 1) msaa = 2;
+                else if (val == 2) msaa = 4;
+                else if (val == 3) msaa = 8;
+
+                QualitySettings.antiAliasing = msaa;
+                Log.LogInfo($"Applied Anti-Aliasing: antiAliasing={msaa}");
+            }
+            catch (Exception ex)
+            {
+                Log.LogError("Failed to apply Anti-Aliasing: " + ex.Message);
+            }
+        }
+
+        public static void ApplyShadowsAndReflections(bool enabled)
+        {
+            try
+            {
+                QualitySettings.shadows = enabled ? ShadowQuality.All : ShadowQuality.Disable;
+                QualitySettings.realtimeReflectionProbes = enabled;
+                Log.LogInfo($"Applied Shadows & Reflections: shadows={QualitySettings.shadows}, realtimeReflectionProbes={QualitySettings.realtimeReflectionProbes}");
+            }
+            catch (Exception ex)
+            {
+                Log.LogError("Failed to apply Shadows & Reflections: " + ex.Message);
+            }
+        }
+
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
+            // Reapply iGPU QualitySettings on scene load to override any scene-specific overrides
+            ApplyTextureQuality(Cfg.TextureQuality.Value);
+            ApplyVSync(Cfg.VSync.Value);
+            ApplyAntiAliasing(Cfg.AntiAliasing.Value);
+            ApplyShadowsAndReflections(Cfg.ShadowsEnabled.Value);
+            ApplyFpsLimit(Cfg.FpsLimit.Value);
+
             if (Cfg.GcOptimize.Value)
             {
                 Log.LogInfo($"Scene Loaded: '{scene.name}'. Sweeping memory allocation leftovers via GC.Collect().");
