@@ -13,7 +13,7 @@ namespace UnknownPerformance
     {
         public const string GUID = "com.kanisuko.unknownperformance";
         public const string Name = "Unknown Performance";
-        public const string Version = "1.3.1";
+        public const string Version = "1.4.0";
     }
 
     [BepInPlugin(PluginInfo.GUID, PluginInfo.Name, PluginInfo.Version)]
@@ -58,6 +58,10 @@ namespace UnknownPerformance
             // 5. Apply Harmony Patches for active performance tuning
             _harmony = new Harmony(PluginInfo.GUID);
             _harmony.PatchAll(Assembly.GetExecutingAssembly());
+
+            // 6. Create DynamicResolutionManager GameObject
+            GameObject dynResObj = new GameObject("DynamicResolutionManager");
+            dynResObj.AddComponent<DynamicResolutionManager>();
 
             Log.LogInfo($"[{PluginInfo.Name} v{PluginInfo.Version}] Advanced performance suite loaded successfully!");
         }
@@ -200,6 +204,68 @@ namespace UnknownPerformance
                 valueGetter: () => Cfg.ShadowsEnabled.Value,
                 cleanName: "Shadows & Real-time Reflections",
                 description: "Enables or disables standard shadows and real-time reflection probes. Disabling these removes costly lighting and pixel shader calculations, drastically scaling performance on low-end hardware."
+            );
+
+            // Register Dynamic Resolution Toggle
+            SettingsManager.RegisterBool(
+                name: "Perf_DynRes_Enabled",
+                category: Setting.SettingCategory.Video,
+                defaultValue: Cfg.DynResEnabled.Value,
+                onApply: (val) => {
+                    Cfg.DynResEnabled.Value = val;
+                    Log.LogInfo($"Dynamic Resolution enabled changed: {val}");
+                },
+                valueGetter: () => Cfg.DynResEnabled.Value,
+                cleanName: "Dynamic Resolution",
+                description: "Enables or disables dynamic scaling of the rendering resolution to maintain a stable, target frame rate in heavy areas."
+            );
+
+            // Register Dynamic Resolution Min Scale
+            SettingsManager.RegisterDropdown(
+                name: "Perf_DynRes_MinScale",
+                category: Setting.SettingCategory.Video,
+                choices: new string[] { "50%", "60%", "70%", "80%", "90%" },
+                defaultValue: Cfg.DynResMinScale.Value,
+                onApply: (val) => {
+                    Cfg.DynResMinScale.Value = val;
+                    Log.LogInfo($"Dynamic Resolution Min Scale changed: {val}");
+                },
+                valueGetter: () => Cfg.DynResMinScale.Value,
+                cleanName: "DynRes Min Scale",
+                cleanChoiceNames: new string[] { "50% (Max Performance)", "60%", "70% (Balanced)", "80%", "90% (Max Quality)" },
+                description: "The lowest scale factor that dynamic resolution can scale down to. Lower scales offer immense performance increases at the cost of a slightly softer image."
+            );
+
+            // Register Dynamic Resolution Min FPS Threshold
+            SettingsManager.RegisterDropdown(
+                name: "Perf_DynRes_MinFps",
+                category: Setting.SettingCategory.Video,
+                choices: new string[] { "30 FPS", "40 FPS", "50 FPS", "60 FPS" },
+                defaultValue: Cfg.DynResMinFps.Value,
+                onApply: (val) => {
+                    Cfg.DynResMinFps.Value = val;
+                    Log.LogInfo($"Dynamic Resolution Min FPS threshold changed: {val}");
+                },
+                valueGetter: () => Cfg.DynResMinFps.Value,
+                cleanName: "DynRes Min FPS Threshold",
+                cleanChoiceNames: new string[] { "30 FPS (Heavy Struggle)", "40 FPS", "50 FPS", "60 FPS (Balanced)" },
+                description: "The FPS threshold below which the resolution scaling hits its configured lowest limit to rescue performance."
+            );
+
+            // Register Dynamic Resolution Target FPS
+            SettingsManager.RegisterDropdown(
+                name: "Perf_DynRes_TargetFps",
+                category: Setting.SettingCategory.Video,
+                choices: new string[] { "60 FPS", "75 FPS", "90 FPS", "120 FPS", "144 FPS" },
+                defaultValue: Cfg.DynResTargetFps.Value,
+                onApply: (val) => {
+                    Cfg.DynResTargetFps.Value = val;
+                    Log.LogInfo($"Dynamic Resolution Target FPS changed: {val}");
+                },
+                valueGetter: () => Cfg.DynResTargetFps.Value,
+                cleanName: "DynRes Target FPS",
+                cleanChoiceNames: new string[] { "60 FPS (Stable standard)", "75 FPS", "90 FPS (High refresh)", "120 FPS", "144 FPS (Enthusiast)" },
+                description: "The frame rate target at or above which the resolution is kept at pristine 100% scale. Resolution scales down dynamically as frame rates fall below this target."
             );
         }
 
