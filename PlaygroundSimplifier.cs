@@ -24,17 +24,27 @@ namespace UnknownPerformance
         }
 
         private float _timeSinceLastSweep = 0f;
-        private const float SweepInterval = 0.25f; // 4 times a second for snappy responsiveness
+        private const float SweepInterval = 0.25f; // Periodic sweep to optimize dynamically spawned chunks
 
-        // Cache system to prevent duplicate texture/sprite creations and CPU/GPU memory leaks
+        // Cache system to prevent duplicate texture/sprite creations
         private static readonly Dictionary<Sprite, Sprite> _silhouetteSpriteCache = new Dictionary<Sprite, Sprite>();
         private static readonly Dictionary<Sprite, Sprite> _blockSpriteCache = new Dictionary<Sprite, Sprite>();
         private static readonly Dictionary<Sprite, Color> _spriteColorCache = new Dictionary<Sprite, Color>();
 
+        // Tracks already processed components to avoid redundant calculations
         private static readonly HashSet<int> _processedRenderers = new HashSet<int>();
         private static readonly HashSet<int> _processedTilemaps = new HashSet<int>();
 
+        // Restore caches to revert changes instantly when toggling settings in real-time
+        private static readonly Dictionary<SpriteRenderer, Sprite> _originalSprites = new Dictionary<SpriteRenderer, Sprite>();
+        private static readonly Dictionary<SpriteRenderer, Color> _originalColors = new Dictionary<SpriteRenderer, Color>();
+        private static readonly Dictionary<Tile, Sprite> _originalTileSprites = new Dictionary<Tile, Sprite>();
+        private static readonly Dictionary<Tile, Color> _originalTileColors = new Dictionary<Tile, Color>();
+        private static readonly HashSet<SpriteRenderer> _disabledFoliageRenderers = new HashSet<SpriteRenderer>();
+
         private static Material? _guiMaterial;
+        private int _lastMode = 0;
+        private bool _lastDisableFoliage = false;
 
         private void Awake()
         {
@@ -56,21 +66,41 @@ namespace UnknownPerformance
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
-            ResetSweepCaches();
+            // Clear memory-leak-prone references upon scene changes
+            _processedRenderers.Clear();
+            _processedTilemaps.Clear();
+            _originalSprites.Clear();
+            _originalColors.Clear();
+            _disabledFoliageRenderers.Clear();
         }
 
         public void ResetSweepCaches()
         {
             _processedRenderers.Clear();
             _processedTilemaps.Clear();
-            Plugin.Log.LogInfo("[PlaygroundSimplifier] Caches cleared for scene reload/settings transition.");
         }
 
         private void Update()
         {
-            // Retrieve current settings
             int mode = Plugin.Cfg.PlaygroundSprites.Value; // 0 = Off, 1 = Silhouette, 2 = Flat Block
             bool disableFoliage = Plugin.Cfg.DisableFoliage.Value;
+
+            // Handle transition states (toggled settings mid-game)
+            if (mode != _lastMode || disableFoliage != _lastDisableFoliage)
+            {
+                if (mode == 0 && _lastMode > 0)
+                {
+                    RestoreOriginalSprites();
+                }
+                if (!disableFoliage && _lastDisableFoliage)
+                {
+                    RestoreOriginalFoliage();
+                }
+                
+                _lastMode = mode;
+                _lastDisableFoliage = disableFoliage;
+                ResetSweepCaches();
+            }
 
             if (mode == 0 && !disableFoliage) return;
 
@@ -86,7 +116,7 @@ namespace UnknownPerformance
         {
             try
             {
-                // 1. Process all SpriteRenderers
+                // 1. Process SpriteRenderers
                 var renderers = FindObjectsOfType<SpriteRenderer>();
                 foreach (var renderer in renderers)
                 {
@@ -96,19 +126,30 @@ namespace UnknownPerformance
                     // Check if foliage or decor to disable
                     if (disableFoliage && IsFoliageOrDecor(renderer))
                     {
-                        renderer.enabled = false;
+                        if (renderer.enabled)
+                        {
+                            renderer.enabled = false;
+                            _disabledFoliageRenderers.Add(renderer);
+                        }
                         _processedRenderers.Add(id);
                         continue;
                     }
 
                     if (mode > 0 && !_processedRenderers.Contains(id))
                     {
+                        // Check if we should exempt characters, items, weapons, UI, etc.
+                        if (ShouldExempt(renderer))
+                        {
+                            _processedRenderers.Add(id);
+                            continue;
+                        }
+
                         SimplifySpriteRenderer(renderer, mode);
                         _processedRenderers.Add(id);
                     }
                 }
 
-                // 2. Process all Tilemaps
+                // 2. Process Tilemaps
                 var tilemaps = FindObjectsOfType<Tilemap>();
                 foreach (var tilemap in tilemaps)
                 {
@@ -153,17 +194,78 @@ namespace UnknownPerformance
             return false;
         }
 
+        private static bool ShouldExempt(SpriteRenderer r)
+        {
+            if (r == null) return true;
+
+            // 1. Direct name checks for crucial interactive/vital entities
+            string name = r.gameObject.name.ToLower();
+            if (name.Contains("player") || name.Contains("body") || name.Contains("limb") || 
+                name.Contains("head") || name.Contains("arm") || name.Contains("leg") || 
+                name.Contains("hand") || name.Contains("foot") || name.Contains("eye") || 
+                name.Contains("ear") || name.Contains("item") || name.Contains("weapon") || 
+                name.Contains("bullet") || name.Contains("projectile") || name.Contains("monster") || 
+                name.Contains("enemy") || name.Contains("creature") || name.Contains("trader") ||
+                name.Contains("terminal") || name.Contains("console") || name.Contains("ui") ||
+                name.Contains("canvas") || name.Contains("hud") || name.Contains("text") ||
+                name.Contains("cursor") || name.Contains("moodle"))
+            {
+                return true;
+            }
+
+            // 2. Traversal up parent hierarchy to detect characters, NPCs, items, weapons, and UI
+            Transform? curr = r.transform;
+            while (curr != null)
+            {
+                string currName = curr.gameObject.name.ToLower();
+                if (currName.Contains("player") || currName.Contains("trader") || 
+                    currName.Contains("enemy") || currName.Contains("monster") || 
+                    currName.Contains("ui") || currName.Contains("terminal") || 
+                    currName.Contains("console"))
+                {
+                    return true;
+                }
+
+                // Check component type names to bypass direct assembly referencing limits
+                Component[] comps = curr.GetComponents<Component>();
+                foreach (var comp in comps)
+                {
+                    if (comp == null) continue;
+                    string typeName = comp.GetType().Name.ToLower();
+                    if (typeName.Contains("body") || typeName.Contains("limb") || typeName.Contains("item") || 
+                        typeName.Contains("trader") || typeName.Contains("player") || typeName.Contains("creature") || 
+                        typeName.Contains("npc") || typeName.Contains("enemy") || typeName.Contains("monster") || 
+                        typeName.Contains("weapon") || typeName.Contains("bullet") || typeName.Contains("projectile") ||
+                        typeName.Contains("ui") || typeName.Contains("canvas") || typeName.Contains("hud") ||
+                        typeName.Contains("moodle"))
+                    {
+                        return true;
+                    }
+                }
+                curr = curr.parent;
+            }
+
+            return false;
+        }
+
         private static void SimplifySpriteRenderer(SpriteRenderer renderer, int mode)
         {
             if (renderer.sprite == null) return;
 
             Sprite original = renderer.sprite;
+
+            // Cache original sprite and color before simplification
+            if (!_originalSprites.ContainsKey(renderer))
+            {
+                _originalSprites[renderer] = original;
+                _originalColors[renderer] = renderer.color;
+            }
+
             Sprite? simplified = GetSimplifiedSprite(original, mode, out Color avgColor);
 
             if (simplified != null)
             {
                 renderer.sprite = simplified;
-                // Preserve transparency modulation if the original renderer was faded
                 renderer.color = new Color(avgColor.r, avgColor.g, avgColor.b, renderer.color.a * avgColor.a);
             }
         }
@@ -190,6 +292,14 @@ namespace UnknownPerformance
                     if (tile == null || tile.sprite == null) continue;
 
                     Sprite original = tile.sprite;
+
+                    // Cache original tile values
+                    if (!_originalTileSprites.ContainsKey(tile))
+                    {
+                        _originalTileSprites[tile] = original;
+                        _originalTileColors[tile] = tile.color;
+                    }
+
                     Sprite? simplified = GetSimplifiedSprite(original, mode, out Color avgColor);
 
                     if (simplified != null)
@@ -243,13 +353,11 @@ namespace UnknownPerformance
             Texture2D tex = original.texture;
             if (tex == null) return original;
 
-            // Downsample target resolution to keep calculations instant and texture memory extremely low
             int targetWidth = Mathf.Min((int)original.rect.width, 32);
             int targetHeight = Mathf.Min((int)original.rect.height, 32);
             targetWidth = Mathf.Max(targetWidth, 1);
             targetHeight = Mathf.Max(targetHeight, 1);
 
-            // Create temporary RenderTexture
             RenderTexture tmp = RenderTexture.GetTemporary(
                 targetWidth,
                 targetHeight,
@@ -258,10 +366,8 @@ namespace UnknownPerformance
                 RenderTextureReadWrite.Linear
             );
 
-            // Copy the sprite's exact source rectangle onto the downsampled RenderTexture
             DrawTexturePart(tex, original.rect, tmp);
 
-            // Read pixels back to CPU
             RenderTexture previous = RenderTexture.active;
             RenderTexture.active = tmp;
 
@@ -272,7 +378,6 @@ namespace UnknownPerformance
             RenderTexture.active = previous;
             RenderTexture.ReleaseTemporary(tmp);
 
-            // Compute average color of visible pixels & flatten texture
             Color[] pixels = readableTex.GetPixels();
             float rSum = 0, gSum = 0, bSum = 0, aSum = 0;
             int count = 0;
@@ -290,7 +395,6 @@ namespace UnknownPerformance
                     aSum += p.a;
                     count++;
                 }
-                // Convert to white (so it is colored purely by the renderer color multiplier)
                 pixels[i] = new Color(1f, 1f, 1f, keepAlpha ? p.a : 1f);
             }
 
@@ -304,16 +408,14 @@ namespace UnknownPerformance
             }
 
             readableTex.SetPixels(pixels);
-            readableTex.filterMode = FilterMode.Point; // Crisp retro/playground scaling
+            readableTex.filterMode = FilterMode.Point;
             readableTex.wrapMode = TextureWrapMode.Clamp;
             readableTex.Apply();
 
-            // Calculate pivot coordinates normalized to [0, 1]
             float pivotX = original.pivot.x / original.rect.width;
             float pivotY = original.pivot.y / original.rect.height;
             Vector2 pivot = new Vector2(pivotX, pivotY);
 
-            // Scaled pixelsPerUnit to maintain exact in-game world scale
             float scaleFactor = (float)targetWidth / original.rect.width;
             float pixelsPerUnit = original.pixelsPerUnit * scaleFactor;
 
@@ -331,7 +433,6 @@ namespace UnknownPerformance
             GL.PushMatrix();
             GL.LoadOrtho();
 
-            // Clear to transparent
             GL.Clear(true, true, Color.clear);
 
             Material mat = GetDefaultGUIMaterial();
@@ -372,6 +473,70 @@ namespace UnknownPerformance
                 }
             }
             return _guiMaterial!;
+        }
+
+        public void RestoreOriginalSprites()
+        {
+            Plugin.Log.LogInfo("[PlaygroundSimplifier] Reverting all modified SpriteRenderers & Tiles back to their original texture details...");
+            
+            // Restore SpriteRenderers
+            foreach (var kvp in _originalSprites)
+            {
+                var r = kvp.Key;
+                if (r != null)
+                {
+                    r.sprite = kvp.Value;
+                    if (_originalColors.TryGetValue(r, out Color col))
+                    {
+                        r.color = col;
+                    }
+                }
+            }
+            _originalSprites.Clear();
+            _originalColors.Clear();
+
+            // Restore Tiles
+            bool refreshed = false;
+            foreach (var kvp in _originalTileSprites)
+            {
+                var tile = kvp.Key;
+                if (tile != null)
+                {
+                    tile.sprite = kvp.Value;
+                    if (_originalTileColors.TryGetValue(tile, out Color col))
+                    {
+                        tile.color = col;
+                    }
+                    refreshed = true;
+                }
+            }
+            _originalTileSprites.Clear();
+            _originalTileColors.Clear();
+
+            if (refreshed)
+            {
+                var tilemaps = FindObjectsOfType<Tilemap>();
+                foreach (var tilemap in tilemaps)
+                {
+                    if (tilemap != null)
+                    {
+                        tilemap.RefreshAllTiles();
+                    }
+                }
+            }
+        }
+
+        public void RestoreOriginalFoliage()
+        {
+            Plugin.Log.LogInfo("[PlaygroundSimplifier] Restoring all disabled decorative foliage & grass objects...");
+            foreach (var r in _disabledFoliageRenderers)
+            {
+                if (r != null)
+                {
+                    r.enabled = true;
+                }
+            }
+            _disabledFoliageRenderers.Clear();
         }
     }
 }
