@@ -11,6 +11,10 @@ namespace UnknownPerformance
         private float _activeScale = 1.0f;
         private bool _wasEnabled = false;
 
+        private static System.Reflection.PropertyInfo? _renderScaleProp = null;
+        private static object? _currentPipeline = null;
+        private static bool _lookedUpProp = false;
+
         private void Awake()
         {
             Instance = this;
@@ -103,28 +107,34 @@ namespace UnknownPerformance
             }
         }
 
-        private void ApplyActiveScale()
+        private void SetRenderScale(float scale)
         {
             try
             {
-                Camera[] cameras = Camera.allCameras;
-                if (cameras != null)
+                var currentPipeline = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline;
+                if (currentPipeline == null) return;
+
+                if (!_lookedUpProp || (object?)_currentPipeline != (object?)currentPipeline)
                 {
-                    foreach (Camera cam in cameras)
-                    {
-                        if (cam != null && !cam.allowDynamicResolution)
-                        {
-                            cam.allowDynamicResolution = true;
-                        }
-                    }
+                    _currentPipeline = currentPipeline;
+                    _renderScaleProp = currentPipeline.GetType().GetProperty("renderScale", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                    _lookedUpProp = true;
                 }
 
-                UnityEngine.ScalableBufferManager.ResizeBuffers(_activeScale, _activeScale);
+                if (_renderScaleProp != null)
+                {
+                    _renderScaleProp.SetValue(currentPipeline, scale);
+                }
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError("Failed to apply dynamic resolution scale: " + ex.Message);
+                Plugin.Log.LogError("Failed to apply dynamic resolution renderScale: " + ex.Message);
             }
+        }
+
+        private void ApplyActiveScale()
+        {
+            SetRenderScale(_activeScale);
         }
 
         private void RestoreDefault()
@@ -132,7 +142,7 @@ namespace UnknownPerformance
             try
             {
                 _activeScale = 1.0f;
-                UnityEngine.ScalableBufferManager.ResizeBuffers(1.0f, 1.0f);
+                SetRenderScale(1.0f);
                 Plugin.Log.LogInfo("Dynamic Resolution restored to default 100%.");
             }
             catch (Exception ex)

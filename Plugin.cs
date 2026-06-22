@@ -13,7 +13,7 @@ namespace UnknownPerformance
     {
         public const string GUID = "com.kanisuko.unknownperformance";
         public const string Name = "Unknown Performance";
-        public const string Version = "1.4.0";
+        public const string Version = "1.4.1";
     }
 
     [BepInPlugin(PluginInfo.GUID, PluginInfo.Name, PluginInfo.Version)]
@@ -33,6 +33,21 @@ namespace UnknownPerformance
 
             // 1. Initialize configuration
             Cfg = new ModConfig(Config);
+
+            // Migration check for FPS Limit from old dropdown index-based configuration
+            if (Cfg.FpsLimit.Value < 30)
+            {
+                int old = Cfg.FpsLimit.Value;
+                Cfg.FpsLimit.Value = (old == 0) ? 30 : (old == 1) ? 45 : (old == 2) ? 60 : 240;
+                try
+                {
+                    Config.Save();
+                }
+                catch (Exception ex)
+                {
+                    Log.LogWarning("Failed to save migrated configuration file: " + ex.Message);
+                }
+            }
 
             if (!Cfg.ModEnabled.Value)
             {
@@ -147,10 +162,11 @@ namespace UnknownPerformance
             );
 
             // Register FPS Limiter
-            SettingsManager.RegisterDropdown(
+            SettingsManager.RegisterInt(
                 name: "Perf_FPS_Limit",
                 category: Setting.SettingCategory.Video,
-                choices: new string[] { "30 FPS", "45 FPS", "60 FPS", "Unlimited" },
+                min: 30,
+                max: 240,
                 defaultValue: Cfg.FpsLimit.Value,
                 onApply: (val) => {
                     Cfg.FpsLimit.Value = val;
@@ -158,8 +174,7 @@ namespace UnknownPerformance
                 },
                 valueGetter: () => Cfg.FpsLimit.Value,
                 cleanName: "Frame Rate Limit",
-                cleanChoiceNames: new string[] { "30 FPS", "45 FPS", "60 FPS", "Unlimited" },
-                description: "Caps the maximum frame rate. Setting a cap prevents your GPU and CPU from drawing unnecessary power, reducing heat and avoiding thermal throttling on mobile/laptop architectures."
+                description: "Caps the maximum frame rate. Slide between 30 and 240 FPS (240 FPS sets it to Unlimited)."
             );
 
             // Register V-Sync Toggle
@@ -330,11 +345,7 @@ namespace UnknownPerformance
         {
             try
             {
-                int fps = -1;
-                if (val == 0) fps = 30;
-                else if (val == 1) fps = 45;
-                else if (val == 2) fps = 60;
-                else fps = -1;
+                int fps = (val >= 240) ? -1 : val;
 
                 Application.targetFrameRate = fps;
                 Log.LogInfo($"Applied FPS Limit: targetFrameRate={fps}");
