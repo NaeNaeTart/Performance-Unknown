@@ -125,5 +125,20 @@ namespace UnknownPerformance
                 Plugin.TriggerGCSweep();
             }
         }
+
+        // --- 4. Hide Native Max Framerate Option ---
+        [HarmonyPatch(typeof(global::Settings), "DefaultSettings")]
+        [HarmonyPostfix]
+        public static void DefaultSettings_Postfix(ref List<Setting> __result)
+        {
+            if (__result != null)
+            {
+                int removed = __result.RemoveAll(s => s.name == "framerate");
+                if (removed > 0)
+                {
+                    Plugin.Log.LogInfo($"Successfully intercepted native settings and removed '{removed}' native 'framerate' setting(s) to avoid conflict with the mod's FPS limiter.");
+                }
+            }
+        }
     }
 }

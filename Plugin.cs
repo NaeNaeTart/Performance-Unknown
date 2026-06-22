@@ -13,7 +13,7 @@ namespace UnknownPerformance
     {
         public const string GUID = "com.kanisuko.unknownperformance";
         public const string Name = "Unknown Performance";
-        public const string Version = "1.3.0";
+        public const string Version = "1.3.1";
     }
 
     [BepInPlugin(PluginInfo.GUID, PluginInfo.Name, PluginInfo.Version)]
